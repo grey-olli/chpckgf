@@ -1,0 +1,135 @@
+#!/usr/bin/perl -w
+#
+# Simplest utility to change owner & permissions for files & dirs from
+# given rpm package. Could be easily changed for other package managers.
+#
+# (c) Oleg Artemev grey.olli@gmail.com
+#
+# License is GNU ver 2 or higher.
+#
+# NO warranty, NO liability, NO security checks given: use at your one risk.
+#
+
+
+# defaults.
+$pkgprog="/bin/rpm";		# pakage manager path.
+$pkgprogopts="-ql";		# opts to get list of package files.
+$chmodp="/bin/chmod -v ";
+$chownp="/bin/chown -v ";
+$chmodpopts="ug-w,o-rwx";	# chmod (1) argument
+$user="root";				# chown (1) argument
+$group="wheel";				# chown (1) argument
+$chownopts="$user.$group";
+$pkgextention=".rpm";
+
+###### proggie starts:
+use Getopt::Long;   # command line processing module.
+use File::Basename; # path splitting module.
+# don't remove this
+local ($help=$tmp=$ext=$quiet=$tmpname=undef,@pkgnames=@pkgnames_tmp=());
+local ($name=basename($0));
+
+# check cmdline opts:
+GetOptions 
+('help|?!',\$help,
+'packagelist=s',\$packagelist,
+'pckgmngr=s',\$pckgmngr,
+'pckgmngropts=s',\$pckgmngropts,
+'chmodopts=s',\$chmodopts,
+'chmodprog=s',\$chmodprog,
+'chownopts=s',\$chownopts,
+'chownprog=s',\$chownprog,
+'disablechown+',\$disablechown,
+'quiet+',\$quiet,
+'ext=s',\$ext) || die "\nTry `$name --help`\n\n";
+
+# do corresponding to specified options work.
+
+if ($help)
+{print
+"$name: Utility to change owner & permissions on given package files & dirs.\n",
+"(c) Light Olli,olli\@digger.orgNOSPAM.ru (remove NOSPAM beofre mailing). License is GNU like.\n",
+"Usage: ",
+"$name <-option <arg1[,arg2[,..]]> [.. -optionN <arg1[,arg2..]> [...]]>\n",
+"Required:\n",
+"\t-packagelist path1/file1.rpm[,path2/file2.rpm[,pathN/fileN.rpm..]]\n",
+"Optional:\n",
+"\t-h\t\t\tGet this help.\n",
+"\t-quet\t\t\tBe quiet.(No sence on external progs!)\n",
+"\t-ext\t\t\tPackage files extention,a MUST if use -pckgmngr.\n",
+"\t\t\t\tDefault is equivalent to rpm extention: '$pkgextention'.\n",
+"\t-pckgmngropts OPTIONS\tReplace package manager options with OPTIONS.\n",
+"\t\t\t\tDefault is equivalent to rpm (8) options: '$pkgprogopts'.\n",
+"\t-pckgmngr PROGNAME\tReplace rpm(8) with PROGNAME.\n",
+"\t\t\t\tDefault is equivalent to '$pkgprog'.\n",
+"\t-chmodopts OPTIONS\tSee man chmod for avaliable opts.\n",
+"\t\t\t\tDefault is equivalent to: '$chmodpopts'\n",
+"\t-chmodprog PROGNAME\tReplace chmod (1) with PROGNAME.\n",
+"\t\t\t\tDefault is equivalent to: '$chmodp'.\n",
+"\t-chownopts OPTIONS\tSee man chown for avaliable opts.\n",
+"\t\t\t\tDefault is equivalent to: '$chownopts'.\n",
+"\t-chownprog PROGNAME\tReplace chown (1) with PROGNAME.\n",
+"\t\t\t\tDefault is equivalent to: '$chownp'.\n",
+"\t-disablechown\t\tDo not run chown (1) on files & dirs.\n",
+"Could be used to run almost any utility on output from almost any programm.\n";
+exit;
+}
+
+unless ($packagelist) 
+{print "\nThe 'packagelist' is required parameter. Try -h for help.\n\n";
+ exit 1;
+}
+
+if ($quiet) 
+{if ($pckgmngropts)		{$pkgprogopts=$pckgmngropts}
+ if ($pckgmngr)			{$pkgprog=$pckgmngr}
+ if ($chmodopts)		{$chmodpopts=$chmodopts}
+ if ($chmodprog)		{$chmodp=$chmodprog}
+ if ($chownopts)		{$chownpopts=$chownopts}
+ if ($chownprog)		{$chownp=$chownprog}
+ if ($ext)				{$pkgextention=$ext}
+}
+else
+{if ($pckgmngropts)	{$pkgprogopts=$pckgmngropts}
+  else {print "using defaults for package manager options: $pkgprogopts .\n"}
+ if ($pckgmngr)			{$pkgprog=$pckgmngr}
+  else 
+  {print "using defaults for package manager programm: $pkgprog .\n";
+   if ($pckgmngr)
+    {unless ($ext) {warn "changing default package manager but keeping extention!"}
+	}
+  }
+ if ($chmodopts)		{$chmodpopts=$chmodopts}
+  else {print "using defaults for chmod (1) options: $chmodpopts .\n"}
+ if ($chmodprog)		{$chmodp=$chmodprog}
+  else {print "using defaults for chmod programm: $chmodp .\n"}
+ if ($chownopts)		{$chownpopts=$chownopts}
+  else {print "using defaults for chown (1) options: $chownpopts .\n"}
+ if ($chownprog)		{$chownp=$chownprog}
+  else {print "using defaults for chown programm: $chownp .\n"}
+ if ($ext)              {$pkgextention=$ext}
+  else {print "using defaults for package manager files extention: $pkgextention .\n"}
+}
+
+# real work starts here:
+
+@pkgnames_tmp=split(/,/,$packagelist);
+foreach $tmp (@pkgnames_tmp)
+{$tmpname=basename($tmp,$pkgextention);
+ push (@pkgnames,$tmpname);
+}
+
+[ -e $pkgprog ]	|| die "$pkgprog not found.";
+[ -e $chmodp ]	|| die "$chmodp not found.";
+[ -e $chownp ]	|| die "$chownp not found.";
+
+foreach $pkgname (@pkgnames)
+{open (FDESCR,"$pkgprog $pkgprogopts $pkgname|") || die "Can't open (FDESCR,$pkgprog|): ", $! ;
+ while (<FDESCR>)
+ {chomp;
+  if (! $disablechown)	
+  {system("$chownp $chownopts $_") == 0 || warn "can't 'system' '$chownp $chownopts $_'";
+  }
+   system("$chmodp $chmodpopts $_") == 0 || warn "can't 'system' '$chmodp $chmodpopts $_'";
+ }
+}
